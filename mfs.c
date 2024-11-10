@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <ctype.h>
 
 #define WHITESPACE " \t\n"      // We want to split our command line up into tokens
                                 // so we need to define what delimits our tokens.
@@ -40,6 +41,32 @@ struct __attribute__((__packed__)) DirectoryEntry {
   uint32_t DIR_FileSize;
 };
 struct DirectoryEntry dir[16];
+
+char *convert_to_fat_name(char *input)
+{
+  char *expanded_name = malloc(12 * sizeof(char));
+  memset( expanded_name, ' ', 12 );
+
+  char *token = strtok( input, "." );
+
+  strncpy( expanded_name, token, strlen( token ) );
+
+  token = strtok( NULL, "." );
+
+  if( token )
+  {
+    strncpy( (char*)(expanded_name+8), token, strlen(token ) );
+  }
+
+  expanded_name[11] = '\0';
+
+  int i;
+  for( i = 0; i < 11; i++ )
+  {
+    expanded_name[i] = toupper( expanded_name[i] );
+  }
+  return expanded_name;
+}
 
 void open_fat(char *filename)
 {
@@ -124,15 +151,97 @@ void ls()
     printf("Error: File system image must be opened first\n");
     return;
   }
+  printf("\n");
   for( int i = 0; i < 16; i ++)
   { 
-    if ( (dir[i].DIR_Attr == 1 || dir[i].DIR_Attr == 16 || dir[i].DIR_Attr == 32) && (dir[i].DIR_Name[0] != 0xe5) )
+    if ( (dir[i].DIR_Attr == 1 || dir[i].DIR_Attr == 16 || dir[i].DIR_Attr == 32) && (dir[i].DIR_Name[0] != -27) )
     {
-      char name[12];
-      strncpy(name, dir[i].DIR_Name, 12);
+      char name[11];
+      strncpy(name, dir[i].DIR_Name, 11);
       printf("%s\n", name);
     }
   }
+  printf("\n");
+}
+
+void stat(char *filename)
+{
+  if ( open == 0 )
+  {
+    printf("Error: File system image must be opened first\n");
+    return;
+  }
+  for( int i = 0; i < 16; i ++)
+  { 
+    char name[12];
+    strncpy(name, dir[i].DIR_Name, 11);
+    name[11] = '\0';
+    if ( strcmp(name, filename) == 0 )
+    {
+      printf("\nDIR_ATTR \t\t%d\n", dir[i].DIR_Attr);
+      printf("Unused1[8] \t\t");
+      int length = sizeof(dir[i].Unused1) / sizeof(dir[i].Unused1[0]);
+      for (int j = 0; j < length; j++)
+      {
+        printf("%d ", dir[i].Unused1[j]);
+      }
+      printf("\n");
+      printf("DIR_FirstClusterHigh \t%d\n", dir[i].DIR_FirstClusterHigh);
+      printf("Unused2[4] \t\t");
+      length = sizeof(dir[i].Unused2) / sizeof(dir[i].Unused2[0]);
+      for (int j = 0; j < length; j++)
+      {
+        printf("%d ", dir[i].Unused2[j]);
+      }
+      printf("\n");
+      printf("DIR_FirstClusterLow \t%d\n", dir[i].DIR_FirstClusterLow);
+      printf("DIR_FileSize \t\t%d\n\n", dir[i].DIR_FileSize);
+    }
+  }
+}
+
+void delete(char *filename)
+{
+  if ( open == 0 )
+  {
+    printf("Error: File system image must be opened first\n");
+    return;
+  }
+  for ( int i = 0; i < 16; i++ )
+  {
+    char name[11];
+    strncpy(name, dir[i].DIR_Name, 11);
+    if ( strcmp(name, filename) == 0)
+    {
+      dir[i].DIR_Name[0] = 0xe5;
+    }
+  }
+}
+
+void undelete(char *filename)
+{
+  if ( open == 0 )
+  {
+    printf("Error: File system image must be opened first\n");
+    return;
+  }
+  char deleted_file[12];
+  strncpy(deleted_file, filename, 11);
+  deleted_file[11] = '\0';
+  deleted_file[0] = 0xe5;
+  printf("deleted_file = %s\n", deleted_file);
+
+  for ( int i = 0; i < 16; i++ )
+  {
+    char name[12];
+    strncpy(name, dir[i].DIR_Name, 11);
+    name[11] = '\0';
+    if ( strcmp(deleted_file, name) == 0)
+    { 
+      dir[i].DIR_Name[0] = filename[0];
+    }
+  }
+
 }
 
 int main()
@@ -163,26 +272,50 @@ int main()
       }
         token_count++;
     }
-
-    if( strcmp(token[0], "exit") == 0 || strcmp(token[0], "quit") == 0 )
+   
+    if ( strcmp(token[0], "exit") == 0 || strcmp(token[0], "quit") == 0 )
     {
       exit(0);
     }
-    if( strcmp(token[0], "open") == 0 )
+    if ( strcmp(token[0], "open") == 0 )
     {
       open_fat(token[1]);
     }
-    if( strcmp(token[0], "close") == 0 )
+    if ( strcmp(token[0], "close") == 0 )
     {
       close_fat();
     }
-    if( strcmp(token[0], "info") == 0 )
+    if ( strcmp(token[0], "info") == 0 )
     {
       info();
     }
-    if( strcmp(token[0], "ls") == 0 )
+    if ( strcmp(token[0], "ls") == 0 )
     {
       ls();
+    }
+    if ( strcmp(token[0], "stat") == 0)
+    {
+      if ( token[1] != NULL)
+      { 
+        char *input = convert_to_fat_name(token[1]);
+        stat(input);
+      }
+    }
+    if ( strcmp(token[0], "delete") == 0 )
+    {
+      if ( token[1] != NULL)
+      {
+        char *input = convert_to_fat_name(token[1]);
+        delete(input);
+      }
+    }
+    if ( strcmp(token[0], "undelete") == 0 )
+    {
+      if ( token[1] != NULL)
+      {
+        char *input = convert_to_fat_name(token[1]);
+        undelete(input);
+      }
     }
 
     free( head_ptr );
