@@ -42,6 +42,11 @@ struct __attribute__((__packed__)) DirectoryEntry {
 };
 struct DirectoryEntry dir[16];
 
+int LBAtoOffset(int32_t sector)
+{
+  return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_NumFATs * BPB_FATSz32 * BPB_BytsPerSec);
+}
+
 char *convert_to_fat_name(char *input)
 {
   char *expanded_name = malloc(12 * sizeof(char));
@@ -106,7 +111,7 @@ void open_fat(char *filename)
     fread(&BPB_FSInfo, 2, 1, fp);
 
     // Calculate root directory and populate DirectoryEntry struct
-    int64_t offset = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_BytsPerSec * BPB_FATSz32 * BPB_NumFATs);
+    int32_t offset = (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_BytsPerSec * BPB_FATSz32 * BPB_NumFATs);
     fseek(fp, offset, SEEK_SET);
     fread(&dir[0], sizeof(struct DirectoryEntry) * 16, 1, fp);
 
@@ -151,17 +156,16 @@ void ls()
     printf("Error: File system image must be opened first\n");
     return;
   }
-  printf("\n");
   for( int i = 0; i < 16; i ++)
   { 
     if ( (dir[i].DIR_Attr == 1 || dir[i].DIR_Attr == 16 || dir[i].DIR_Attr == 32) && (dir[i].DIR_Name[0] != -27) )
     {
-      char name[11];
+      char name[12];
       strncpy(name, dir[i].DIR_Name, 11);
+      name[11] = '\0';
       printf("%s\n", name);
     }
   }
-  printf("\n");
 }
 
 void stat(char *filename)
@@ -229,7 +233,6 @@ void undelete(char *filename)
   strncpy(deleted_file, filename, 11);
   deleted_file[11] = '\0';
   deleted_file[0] = 0xe5;
-  printf("deleted_file = %s\n", deleted_file);
 
   for ( int i = 0; i < 16; i++ )
   {
@@ -240,6 +243,42 @@ void undelete(char *filename)
     { 
       dir[i].DIR_Name[0] = filename[0];
     }
+  }
+
+}
+
+void cd(char *directoryname)
+{
+  if ( open == 0 )
+  {
+    printf("Error: File system image must be opened first\n");
+    return;
+  }
+  for ( int i = 0; i < 16; i++ )
+  {
+    char name[12];
+    strncpy(name, dir[i].DIR_Name, 11);
+    name[11] = '\0';
+    // Check if the string passed after 'cd' (directoryname) matches an entry (name) in the directory struct
+    if ( strcmp(directoryname, name) == 0)
+    { 
+      // Calculate cluster number and offset of the directory to go to
+      int32_t cluster_number = (dir[i].DIR_FirstClusterHigh << 16) | dir[i].DIR_FirstClusterLow;
+      int32_t offset = LBAtoOffset(cluster_number);
+      fseek(fp, offset, SEEK_SET);
+      fread(&dir[0], sizeof(struct DirectoryEntry) * 16, 1, fp);
+      return;
+    }
+  }
+
+}
+
+void read(char *filename)
+{
+  if ( open == 0 )
+  {
+    printf("Error: File system image must be opened first\n");
+    return;
   }
 
 }
@@ -301,7 +340,7 @@ int main()
         stat(input);
       }
     }
-    if ( strcmp(token[0], "delete") == 0 )
+    if ( strcmp(token[0], "del") == 0 )
     {
       if ( token[1] != NULL)
       {
@@ -309,12 +348,27 @@ int main()
         delete(input);
       }
     }
-    if ( strcmp(token[0], "undelete") == 0 )
+    if ( strcmp(token[0], "undel") == 0 )
     {
       if ( token[1] != NULL)
       {
         char *input = convert_to_fat_name(token[1]);
         undelete(input);
+      }
+    }
+    if ( strcmp(token[0], "cd") == 0 )
+    { 
+      if ( token[1] != NULL)
+      {
+        if ( strcmp(token[1], "..") == 0)
+        {
+          cd("..         ");
+        }
+        else
+        { 
+          char *input = convert_to_fat_name(token[1]);
+          cd(input);
+        }
       }
     }
 
