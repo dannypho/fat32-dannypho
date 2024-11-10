@@ -273,14 +273,47 @@ void cd(char *directoryname)
 
 }
 
-void read(char *filename)
+void read(char *filename, int position, int number_of_bytes, char *option)
 {
   if ( open == 0 )
   {
     printf("Error: File system image must be opened first\n");
     return;
   }
-
+  for ( int i = 0; i < 16; i++ )
+  {
+    char name[12];
+    strncpy(name, dir[i].DIR_Name, 11);
+    name[11] = '\0';
+    // Check if the string passed after 'read' (directoryname) matches an entry (name) in the directory struct
+    if ( strcmp(filename, name) == 0)
+    { 
+      int32_t cluster_number = (dir[i].DIR_FirstClusterHigh << 16) | dir[i].DIR_FirstClusterLow;
+      int32_t offset = LBAtoOffset(cluster_number);
+      int32_t start_position = offset + position;
+      int32_t end_position = offset + position + number_of_bytes;
+      int32_t length = end_position - start_position;
+      uint8_t value;
+      for (int j = 0; j < length; j++)
+      { 
+        fseek(fp, start_position + j, SEEK_SET);
+        fread(&value, 1, 1, fp);
+        if (strcmp(option, "-ascii") == 0)
+        {
+          printf("%c ", value);
+        }
+        else if (strcmp(option, "-dec") == 0)
+        {
+          printf("%d ", value);
+        }
+        else
+        {
+          printf("%x ", value);
+        }
+      }
+      printf("\n");
+    }
+  }
 }
 
 int main()
@@ -369,6 +402,23 @@ int main()
           char *input = convert_to_fat_name(token[1]);
           cd(input);
         }
+      }
+    }
+    if (strcmp(token[0], "read") == 0)
+    {
+      if(token[1] != NULL && token[2] != NULL && token[3] != NULL && token[4] == NULL)
+      {
+        char *input = convert_to_fat_name(token[1]);
+        int position = atoi(token[2]);
+        int number_of_bytes = atoi(token[3]);
+        read(input, position, number_of_bytes, NULL);
+      }
+      if(token[1] != NULL && token[2] != NULL && token[3] != NULL && token[4] != NULL)
+      {
+        char *input = convert_to_fat_name(token[1]);
+        int position = atoi(token[2]);
+        int number_of_bytes = atoi(token[3]);
+        read(input, position, number_of_bytes, token[4]);
       }
     }
 
