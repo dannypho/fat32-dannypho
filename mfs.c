@@ -124,6 +124,8 @@ void open_fat(char *filename)
     fseek(fp, offset, SEEK_SET);
     fread(&dir[0], sizeof(struct DirectoryEntry) * 16, 1, fp);
 
+    printf("offset of cluster 0 = %d\n", LBAtoOffset(0));
+
     open = 1;
   }
 }
@@ -274,6 +276,10 @@ void cd(char *directoryname)
       // Calculate cluster number and offset of the directory to go to
       int32_t cluster_number = (dir[i].DIR_FirstClusterHigh << 16) | dir[i].DIR_FirstClusterLow;
       int32_t offset = LBAtoOffset(cluster_number);
+      if (offset == LBAtoOffset(0))
+      {
+        offset = LBAtoOffset(2);
+      }
       fseek(fp, offset, SEEK_SET);
       fread(&dir[0], sizeof(struct DirectoryEntry) * 16, 1, fp);
       return;
@@ -337,7 +343,6 @@ void get(char *filename, char *new_filename)
     char name[12];
     strncpy(name, dir[i].DIR_Name, 11);
     name[11] = '\0';
-    // Check if the string passed after 'read' (directoryname) matches an entry (name) in the directory struct
     if ( strcmp(filename, name) == 0)
     {
       char *ofd_filename = filename;
@@ -368,6 +373,29 @@ void get(char *filename, char *new_filename)
       fclose(ofd);
     }
   }
+}
+
+void put(char *filename, char *new_filename)
+{
+  if ( open == 0 )
+  {
+    printf("Error: File system image must be opened first\n");
+    return;
+  }
+
+  char *ifd_name = filename;
+
+  if (new_filename != NULL)
+  {
+    ifd_name = new_filename;
+  }
+
+  FILE *ifd = fopen(ifd_name, "r");
+  if (ifd == NULL)
+  {
+    printf("Error: File not found\n");
+  }
+  
 }
 
 int main()
@@ -482,6 +510,21 @@ int main()
         char *input = convert_to_fat_name(token[1]);
         get(input, token[2]);
       }
+    }
+    if (strcmp(token[0], "put") == 0)
+    {
+      if (token[1] != NULL && token[2] != NULL)
+      {
+        char *input = convert_to_fat_name(token[1]);
+        char *input2 = convert_to_fat_name(token[2]);
+        put(input, input2);
+      }
+      else if (token[2] == NULL)
+      {
+        char *input = convert_to_fat_name(token[1]);
+        put(input, NULL);
+      }
+      
     }
 
     free( head_ptr );
