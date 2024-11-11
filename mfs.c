@@ -47,6 +47,15 @@ int LBAtoOffset(int32_t sector)
   return ((sector - 2) * BPB_BytsPerSec) + (BPB_BytsPerSec * BPB_RsvdSecCnt) + (BPB_NumFATs * BPB_FATSz32 * BPB_BytsPerSec);
 }
 
+uint32_t NextLB(uint32_t sector)
+{
+  uint32_t FATAddress = ( BPB_BytsPerSec * BPB_RsvdSecCnt ) + (sector * 4);
+  uint32_t val;
+  fseek(fp, FATAddress, SEEK_SET);
+  fread(&val, 4, 1, fp);
+  return val;
+}
+
 char *convert_to_fat_name(char *input)
 {
   char *expanded_name = malloc(12 * sizeof(char));
@@ -316,6 +325,51 @@ void read(char *filename, int position, int number_of_bytes, char *option)
   }
 }
 
+void get(char *filename, char *new_filename)
+{
+  if ( open == 0 )
+  {
+    printf("Error: File system image must be opened first\n");
+    return;
+  }
+  for ( int i = 0; i < 16; i++ )
+  {
+    char name[12];
+    strncpy(name, dir[i].DIR_Name, 11);
+    name[11] = '\0';
+    // Check if the string passed after 'read' (directoryname) matches an entry (name) in the directory struct
+    if ( strcmp(filename, name) == 0)
+    {
+      char *ofd_filename = filename;
+      if (new_filename != NULL)
+      {
+        ofd_filename = new_filename;
+      }
+      FILE *ofd = fopen(ofd_filename, "w");
+      uint32_t bytes_to_copy = dir[i].DIR_FileSize;
+      int32_t cluster_number = (dir[i].DIR_FirstClusterHigh << 16) | dir[i].DIR_FirstClusterLow;
+      uint8_t buffer[512];
+      while (bytes_to_copy >= 512)
+      {
+        int32_t offset = LBAtoOffset(cluster_number);
+        fseek(fp, offset, SEEK_SET);
+        fread(buffer, 1, 512, fp);
+        fwrite(buffer, 512, 1, ofd);
+        cluster_number = NextLB(cluster_number);
+        bytes_to_copy = bytes_to_copy - 512;
+      }
+      if (bytes_to_copy > 0)
+      {
+        uint32_t offset = LBAtoOffset(cluster_number);
+        fseek(fp, offset, SEEK_SET);
+        fread(buffer, 1, bytes_to_copy, fp);
+        fwrite(buffer, bytes_to_copy, 1, ofd);
+      }
+      fclose(ofd);
+    }
+  }
+}
+
 int main()
 {
   char * command_string = (char*) malloc( MAX_COMMAND_SIZE );
@@ -419,6 +473,14 @@ int main()
         int position = atoi(token[2]);
         int number_of_bytes = atoi(token[3]);
         read(input, position, number_of_bytes, token[4]);
+      }
+    }
+    if (strcmp(token[0], "get") == 0)
+    {
+      if (token[1] != NULL)
+      {
+        char *input = convert_to_fat_name(token[1]);
+        get(input, token[2]);
       }
     }
 
