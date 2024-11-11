@@ -124,8 +124,6 @@ void open_fat(char *filename)
     fseek(fp, offset, SEEK_SET);
     fread(&dir[0], sizeof(struct DirectoryEntry) * 16, 1, fp);
 
-    printf("offset of cluster 0 = %d\n", LBAtoOffset(0));
-
     open = 1;
   }
 }
@@ -193,7 +191,7 @@ void stat(char *filename)
     name[11] = '\0';
     if ( strcmp(name, filename) == 0 )
     {
-      printf("\nDIR_ATTR \t\t%d\n", dir[i].DIR_Attr);
+      printf("DIR_ATTR \t\t%d\n", dir[i].DIR_Attr);
       printf("Unused1[8] \t\t");
       int length = sizeof(dir[i].Unused1) / sizeof(dir[i].Unused1[0]);
       for (int j = 0; j < length; j++)
@@ -210,9 +208,11 @@ void stat(char *filename)
       }
       printf("\n");
       printf("DIR_FirstClusterLow \t%d\n", dir[i].DIR_FirstClusterLow);
-      printf("DIR_FileSize \t\t%d\n\n", dir[i].DIR_FileSize);
+      printf("DIR_FileSize \t\t%d\n", dir[i].DIR_FileSize);
+      return;
     }
   }
+  printf("Error: File not found\n");
 }
 
 void delete(char *filename)
@@ -351,6 +351,10 @@ void get(char *filename, char *new_filename)
         ofd_filename = new_filename;
       }
       FILE *ofd = fopen(ofd_filename, "w");
+      if (ofd == NULL)
+      {
+        printf("Error: File not found\n");
+      }
       uint32_t bytes_to_copy = dir[i].DIR_FileSize;
       int32_t cluster_number = (dir[i].DIR_FirstClusterHigh << 16) | dir[i].DIR_FirstClusterLow;
       uint8_t buffer[512];
@@ -395,7 +399,7 @@ void put(char *filename, char *new_filename)
   {
     printf("Error: File not found\n");
   }
-  
+
 }
 
 int main()
